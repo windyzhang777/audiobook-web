@@ -1,0 +1,30 @@
+{
+  "name": "@audiobook/server",
+  "version": "1.0.0",
+  "description": "Audiobook-web server",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@audiobook/shared": "*",
+    "cors": "^2.8.6",
+    "epub2": "^3.0.2",
+    "express": "^5.2.1",
+    "franc": "^6.2.0",
+    "multer": "^2.0.2",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/franc": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^25.0.10",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.7.0"
+  }
+}
