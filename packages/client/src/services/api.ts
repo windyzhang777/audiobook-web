@@ -1,11 +1,14 @@
 import type { Book, BookContent } from '@audiobook/shared';
+import { ChunkedUploader, UPLOAD_CHUNK_SIZE, type ChunkedUploadConfig } from './ChunkedUploader';
 
 export const api = {
   books: {
-    upload: async (file: File, title?: string): Promise<Book> => {
+    /**
+     * Legacy upload (simple, for small files < 1MB)
+     */
+    upload: async (file: File): Promise<Book> => {
       const formData = new FormData();
       formData.append('file', file);
-      if (title) formData.append('title', title);
 
       const response = await fetch('/api/books/upload', {
         method: 'POST',
@@ -71,6 +74,28 @@ export const api = {
       await fetch(`/api/books/${id}`, {
         method: 'DELETE',
       });
+    },
+  },
+  upload: {
+    /**
+     * Upload book with chunked upload (recommended for files > 1MB)
+     */
+    uploadChunked: async (file: File, config?: Partial<ChunkedUploadConfig>): Promise<Book> => {
+      const uploader = new ChunkedUploader(file, config);
+      return uploader.upload();
+    },
+
+    /**
+     * Smart upload - automatically chooses chunked or simple based on file size
+     */
+    smartUpload: async (file: File, config?: Partial<ChunkedUploadConfig>): Promise<Book> => {
+      const threshold = UPLOAD_CHUNK_SIZE;
+
+      if (file.size > threshold) {
+        return api.upload.uploadChunked(file, config);
+      } else {
+        return api.books.upload(file);
+      }
     },
   },
 };

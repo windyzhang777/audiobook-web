@@ -1,10 +1,14 @@
 import { BookService } from '@/services/bookService';
+import { fixEncoding } from '@audiobook/shared';
 import { Request, Response } from 'express';
 import path from 'path';
 
 export class BookController {
   constructor(private bookService: BookService) {}
 
+  /**
+   * Legacy upload (simple, for small files < 1MB)
+   */
   upload = async (req: Request, res: Response) => {
     try {
       if (!req.file) {
@@ -17,8 +21,10 @@ export class BookController {
       }
 
       const bookTitle = req.body.title || path.basename(req.file.originalname, path.extname(req.file.originalname));
+      const cleanTitle = fixEncoding(bookTitle);
 
-      const book = await this.bookService.upload(req.file.path, fileType, bookTitle);
+      this.bookService.checkExisting(cleanTitle, req.file.path);
+      const book = await this.bookService.upload(req.file.path, fileType, cleanTitle);
       res.status(201).json(book);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error adding book';

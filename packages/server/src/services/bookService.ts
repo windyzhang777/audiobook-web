@@ -1,29 +1,36 @@
+import { uploadsDir } from '@/index';
 import { BookRepository } from '@/repositories/book';
-import { Book, BookContent, BookFileType, fixEncoding } from '@audiobook/shared';
+import { Book, BookContent, BookFileType } from '@audiobook/shared';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { TextProcessorService } from './textProcessorService';
 
 export class BookService {
+  private uploadsDir = uploadsDir;
+
   constructor(
     private bookRepository: BookRepository,
     private textProcessorService: TextProcessorService,
-  ) {}
+  ) {
+    // Ensure temp directory exists
+    this.ensureDirectories();
+  }
 
   getAll = () => {
     return this.bookRepository.getAll();
   };
 
-  upload = async (filePath: string, fileType: string, bookTitle: string) => {
-    const cleanTitle = fixEncoding(bookTitle);
-
+  checkExisting = (bookTitle: string, filePath?: string) => {
     const existingBooks = this.bookRepository.getAll();
-    const found = existingBooks.find((book) => book.title === cleanTitle);
+
+    const found = existingBooks.find((book) => book.title === bookTitle);
     if (found) {
-      this.deleteFile(filePath);
+      if (filePath) this.deleteFile(filePath);
       throw new Error('Book with the same title already exists');
     }
+  };
 
+  upload = async (filePath: string, fileType: string, bookTitle: string) => {
     let textContent: string;
     try {
       textContent = await this.textProcessorService.extractText(filePath, fileType);
@@ -37,7 +44,7 @@ export class BookService {
     const book: Book = {
       id: uuidv4(),
       userId: 'local-user',
-      title: cleanTitle,
+      title: bookTitle,
       source: 'local',
       localPath: filePath,
       fileType: fileType as BookFileType,
@@ -98,6 +105,12 @@ export class BookService {
       fs.unlinkSync(filePath);
     } catch (error) {
       console.error(`Failed to delete file at ${filePath}:`, error);
+    }
+  };
+
+  private ensureDirectories = () => {
+    if (!fs.existsSync(this.uploadsDir)) {
+      fs.mkdirSync(this.uploadsDir, { recursive: true });
     }
   };
 }

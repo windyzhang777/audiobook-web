@@ -1,19 +1,10 @@
 import { BookController } from '@/controllers/bookController';
-import { BookRepository } from '@/repositories/book';
-import { BookService } from '@/services/bookService';
-import { TextProcessorService } from '@/services/textProcessorService';
-import { isValidFileType, sanitizeFileName } from '@audiobook/shared';
+import { uploadsDir } from '@/index';
+import { isValidFileType } from '@audiobook/shared';
 import { Router } from 'express';
-import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-
-// Ensure uploads directory exists
-export const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 /**
  * Multer upload configuration
@@ -22,12 +13,12 @@ if (!fs.existsSync(uploadDir)) {
  */
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
+    cb(null, uploadsDir);
   },
   filename: (_req, file, cb) => {
     const fileExt = path.extname(file.originalname);
     const baseName = path.basename(file.originalname, fileExt);
-    cb(null, `${uuidv4()}-${sanitizeFileName(baseName)}${fileExt.toLowerCase()}`);
+    cb(null, `${uuidv4()}-${baseName}${fileExt.toLowerCase()}`);
   },
 });
 
@@ -39,18 +30,16 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: (error: Error | nu
     cb(new Error('Invalid file type'));
   }
 };
-const upload = multer({
+
+export const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
+
+export const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB limit
+  limits: { fileSize: MAX_UPLOAD_SIZE },
 });
 
-export const bookRoutes = () => {
-  const bookRepository = new BookRepository();
-  const textProcessorService = new TextProcessorService();
-  const bookService = new BookService(bookRepository, textProcessorService);
-  const bookController = new BookController(bookService);
-
+export const bookRoutes = (bookController: BookController) => {
   const router = Router();
 
   router.get('/', bookController.getAll);

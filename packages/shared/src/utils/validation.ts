@@ -12,6 +12,13 @@ export const localeByLang: Record<string, string> = {
 // \p{N} matches any kind of numeric character
 export const hasAlphanumeric = /[\p{L}\p{N}]/u;
 
+export const getFileTitle = (fileName: string) => {
+  const parts = fileName.split('.');
+  const fileType = parts.pop() || 'txt';
+  const title = parts.join('_');
+  return { title, fileType };
+};
+
 export const fixEncoding = (str: string): string => Buffer.from(str, 'latin1').toString('utf8');
 
 export const isValidFileType = (fileType: string): boolean => {
@@ -23,6 +30,7 @@ export const sanitizeFileName = (fileName: string): string =>
   fileName
     .replace(/[^a-z0-9_\-\.]/gi, '_')
     .replace(/_+/g, '_')
+    .replace(/_\./g, '.')
     .replace(/^_+|_+$/g, '');
 
 export const calculateProgress = (currentLine: number, totalLines: number): number => {

@@ -3,12 +3,14 @@ import { BookOpen, Loader, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { UploadProgressDialog } from '../components/UploadProgress';
 
 export const BookList = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploadingFile, setUploadingFile] = useState<{ file: File } | null>(null);
   const [management, setManagement] = useState(false);
-  console.log(`books :`, books);
+
   const navigate = useNavigate();
 
   const loadBooks = async () => {
@@ -23,19 +25,13 @@ export const BookList = () => {
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (management) manageBooks();
     e.preventDefault();
+
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setLoading(true);
-    try {
-      await api.books.upload(file);
-      await loadBooks();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to upload');
-    } finally {
-      setLoading(false);
-    }
+    setUploadingFile({ file });
   };
 
   const handleDelete = async (id: string, title: string) => {
@@ -51,9 +47,13 @@ export const BookList = () => {
     }
   };
 
+  const manageBooks = () => {
+    setManagement((prev) => !prev);
+  };
+
   useEffect(() => {
     loadBooks();
-  }, []);
+  }, [uploadingFile]);
 
   if (loading) {
     return (
@@ -76,7 +76,7 @@ export const BookList = () => {
       </label>
 
       <div className="my-4 flex justify-end items-center text-xs text-gray-400">
-        <button onClick={() => setManagement((prev) => !prev)} className="p-0!">
+        <button onClick={manageBooks} className="p-0!">
           Book Manager
         </button>
       </div>
@@ -136,6 +136,9 @@ export const BookList = () => {
           })
         )}
       </div>
+
+      {/* Upload Progress Dialog */}
+      {uploadingFile && <UploadProgressDialog file={uploadingFile.file} onComplete={() => setUploadingFile(null)} onCancel={() => setUploadingFile(null)} />}
     </div>
   );
 };
