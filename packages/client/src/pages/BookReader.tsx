@@ -344,7 +344,7 @@ export const BookReader = () => {
               ref={(el) => {
                 lineRefs.current[index] = el;
               }}
-              onClick={() => handleLineClick(index)}
+              onDoubleClick={() => handleLineClick(index)}
               className={`cursor-pointer transition-all duration-200 ease-in-out rounded-lg ${index === currentLine ? 'bg-amber-100 font-medium outline-2 outline-amber-100' : ''}`}
             >
               {line}
