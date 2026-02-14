@@ -4,11 +4,9 @@ A scalable, full-stack audiobook application built with Node.js, React 19, and T
 
 ## Features
 
-- 📚 Upload and manage audiobooks (TXT, PDF, EPUB, MOBI)
+- 📚 Upload and manage audiobooks (TXT, ~~PDF~~, EPUB, ~~MOBI~~)
 - 🎧 Text-to-speech reading with Web Speech API
 - 📊 Progress tracking for each book
-- 🎨 Beautiful UI with Tailwind CSS
-- 🏗️ Clean architecture with repository and service layers
 - 🌍 Language detection and intelligent sentence splitting
 - 🚀 Scalable monorepo structure with npm workspaces
 
@@ -72,26 +70,11 @@ npm run format
 npm run type-check
 ```
 
-## API Endpoints
-
-### Books
-
-- `POST /api/books/upload` - Upload a new book
-- `GET /api/books?userId=<id>` - Get all books for a user
-- `GET /api/books/:id` - Get a specific book
-- `PUT /api/books/:id` - Update book metadata
-- `DELETE /api/books/:id` - Delete a book
-- `GET /api/books/:id/content` - Get book content (lines)
-
-### Health Check
-
-- `GET /health` - Server health check
-
 ## Features in Detail
 
 ### Book Upload
 
-- Supports TXT, PDF, EPUB, and MOBI formats
+- Supports TXT, ~~PDF~~, EPUB, and ~~MOBI~~ formats
 - Duplicate title detection prevents overwrites
 - Automatic language detection using Franc
 - Intelligent sentence splitting with Intl.Segmenter
@@ -103,7 +86,7 @@ npm run type-check
 - Adjustable reading speed (0.5x - 4.0x)
 - Volume control
 - Navigate between sentences
-- Click any sentence to jump to it
+- Double click any sentence to jump to it
 - Automatic progress saving
 - Visual progress indicators
 
@@ -115,29 +98,11 @@ npm run type-check
 - Last read timestamp
 - Visual progress bars
 
-### Architecture Highlights
-
-#### Repository Pattern
-
-Clean separation of data access logic from business logic.
-
-#### Service Layer
-
-Business rules and orchestration separate from HTTP concerns.
-
-#### Shared Package
-
-Type-safe communication between frontend and backend with shared models.
-
-#### Path Aliases
-
-Clean imports using `@/` prefix throughout the codebase.
-
 ## Future Enhancements
 
 - [ ] User authentication and authorization
 - [ ] Database integration (PostgreSQL/MongoDB)
-- [ ] PDF/EPUB text extraction
+- [ ] PDF/MOBI text extraction
 - [ ] Bookmarks and notes
 - [ ] Multiple voice options
 - [ ] Playback history
