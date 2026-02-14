@@ -34,7 +34,6 @@ export const BookReader = () => {
   const silentAudioRef = useRef(new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'));
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const playButtonRef = useRef<HTMLButtonElement>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shouldSync = useRef(false);
 
   const loadBook = async (id: string) => {
@@ -71,7 +70,6 @@ export const BookReader = () => {
   };
 
   const handleLineClick = (lineIndex: number) => {
-    setIsScrolling(false);
     setCurrentLine(lineIndex);
     if (isPlaying) {
       stopUtterance();
@@ -284,12 +282,6 @@ export const BookReader = () => {
       <section
         onScroll={() => {
           setIsScrolling(true);
-
-          if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-
-          scrollTimeoutRef.current = setTimeout(() => {
-            setIsScrolling(false);
-          }, 2000);
         }}
         className="min-h-[90vh] h-[50vh] max-h-3/4 overflow-auto px-12 pt-6 leading-loose"
       >
@@ -304,12 +296,14 @@ export const BookReader = () => {
         {showJumpButton ? (
           <button
             onClick={() => {
-              setIsScrolling(false);
               lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'auto', block: 'center' });
-              playButtonRef.current?.focus();
+              setTimeout(() => {
+                setIsScrolling(false);
+                playButtonRef.current?.focus();
+              }, 0);
             }}
             className="fixed top-4 right-2"
-            title="Jump to last read"
+            title={`Jump to ${isPlaying ? 'last ' : ''}read`}
           >
             <BookmarkPlus fill="orange" strokeWidth={1.2} />
           </button>
