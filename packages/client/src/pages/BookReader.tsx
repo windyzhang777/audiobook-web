@@ -25,6 +25,7 @@ export const BookReader = () => {
   const updatedBook = useMemo(() => ({ currentLine, settings: { ...(book?.settings || {}), fontSize, rate: speechRate } }), [book?.settings, currentLine, fontSize, speechRate]);
 
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const silentAudioRef = useRef(new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'));
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const playButtonRef = useRef<HTMLButtonElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,6 +99,16 @@ export const BookReader = () => {
 
   // TODO: add cloud over native browser TTS
   const startUtterance = (startIndex: number) => {
+    // Kick off the silent audio loop to "claim" the hardware buttons
+    const audio = silentAudioRef.current;
+    audio.loop = true;
+    audio.play().catch((e) => console.error('Audio play failed:', e));
+
+    // Explicitly set the Playback State (Crucial for iOS)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+    }
+
     speechSynthesis.cancel(); // cancel any ongoing speech
 
     // speak all lines from startIndex to end
@@ -127,6 +138,13 @@ export const BookReader = () => {
   };
 
   const stopUtterance = () => {
+    if (silentAudioRef.current) {
+      silentAudioRef.current.pause();
+    }
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
+
     if (utteranceRef.current) utteranceRef.current.onend = null;
     speechSynthesis.cancel();
     setIsPlaying(false);
@@ -204,6 +222,36 @@ export const BookReader = () => {
 
     return () => observer.disconnect();
   }, [currentLine, loading]);
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      // Set the Play/Pause handlers (AirPod Taps)
+      navigator.mediaSession.setActionHandler('play', () => handlePlayPause());
+
+      navigator.mediaSession.setActionHandler('pause', () => handlePlayPause());
+
+      // Map skip buttons to lines
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        const next = Math.min(currentLine + 1, lines.length - 1);
+        handleLineClick(next);
+      });
+
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        const prev = Math.max(currentLine - 1, 0);
+        handleLineClick(prev);
+      });
+    }
+
+    // Cleanup handlers when component unmounts
+    return () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+      }
+    };
+  }, [currentLine, handlePlayPause]);
 
   if (loading) {
     return (
