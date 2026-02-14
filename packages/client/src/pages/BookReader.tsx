@@ -1,9 +1,9 @@
+import { useDebounceCallback } from '@/common/useDebounceCallback';
+import { api } from '@/services/api';
 import { calculateProgress, FIVE_MINUTES, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
 import { AArrowDown, AArrowUp, ArrowLeft, AudioLines, BookmarkPlus, LibraryBig, Loader, Pause, Play, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useDebounceCallback } from '../common/useDebounceCallback';
-import { api } from '../services/api';
 
 const SPEECH_RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
@@ -22,7 +22,13 @@ export const BookReader = () => {
   const [currentLine, setCurrentLine] = useState<Book['currentLine']>(0);
   const [fontSize, setFontSize] = useState<NonNullable<TextOptions['fontSize']>>(18);
   const [speechRate, setSpeechRate] = useState<NonNullable<SpeechOptions['rate']>>(1.0);
-  const updatedBook = useMemo(() => ({ currentLine, settings: { ...(book?.settings || {}), fontSize, rate: speechRate } }), [book?.settings, currentLine, fontSize, speechRate]);
+  const updatedBook = useMemo(
+    () => ({
+      currentLine,
+      settings: { ...(book?.settings || {}), fontSize, rate: speechRate },
+    }),
+    [book?.settings, currentLine, fontSize, speechRate],
+  );
 
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
   const silentAudioRef = useRef(new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'));
@@ -255,7 +261,7 @@ export const BookReader = () => {
 
   if (loading) {
     return (
-      <div className="min-h-full flex justify-center items-center gap-2">
+      <div aria-label="loading" className="min-h-full flex justify-center items-center gap-2">
         <Loader />
       </div>
     );
@@ -403,9 +409,13 @@ export const BookReader = () => {
           </select>
         </span>
 
-        <span title={`Line ${currentLine} of ${lines.length}`} className="bg-transparent!">
-          Progress: {calculateProgress(book.currentLine, book.totalLines)}%
-        </span>
+        {book ? (
+          <span title={`Line ${currentLine} of ${lines.length}`} className="bg-transparent!">
+            Progress: {calculateProgress(book.currentLine, book.totalLines)}%
+          </span>
+        ) : (
+          <></>
+        )}
       </div>
     </div>
   );

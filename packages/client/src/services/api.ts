@@ -1,5 +1,5 @@
+import { ChunkedUploader, UPLOAD_CHUNK_SIZE, type ChunkedUploadConfig } from '@/services/ChunkedUploader';
 import type { Book, BookContent } from '@audiobook/shared';
-import { ChunkedUploader, UPLOAD_CHUNK_SIZE, type ChunkedUploadConfig } from './ChunkedUploader';
 
 export const api = {
   books: {

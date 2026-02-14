@@ -1,7 +1,7 @@
+import { api } from '@/services/api';
+import { ChunkedUploader, type UploadProgress } from '@/services/ChunkedUploader';
 import { AlertCircle, CheckCircle, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../services/api';
-import { ChunkedUploader, type UploadProgress } from '../services/ChunkedUploader';
 
 interface UploadProgressProps {
   file: File;

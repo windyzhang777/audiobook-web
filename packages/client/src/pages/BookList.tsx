@@ -1,9 +1,9 @@
+import { UploadProgressDialog } from '@/components/UploadProgress';
+import { api } from '@/services/api';
 import { calculateProgress, type Book } from '@audiobook/shared';
 import { BookOpen, Loader, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UploadProgressDialog } from '../components/UploadProgress';
-import { api } from '../services/api';
 
 export const BookList = () => {
   const [books, setBooks] = useState<Book[]>([]);
@@ -67,7 +67,7 @@ export const BookList = () => {
 
   if (loading) {
     return (
-      <div className="min-h-full flex justify-center items-center gap-2">
+      <div aria-label="loading" className="min-h-full flex justify-center items-center gap-2">
         <Loader />
       </div>
     );
@@ -83,7 +83,7 @@ export const BookList = () => {
       <label className="flex justify-center items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 active:bg-blue-800">
         <Upload size={16} />
         <span>Upload a new book (txt, pdf, epub, mobi)</span>
-        <input type="file" accept=".txt,.pdf,.epub,.mobi" tabIndex={0} disabled={loading} onChange={handleUpload} onClick={() => closeEdit()} className="hidden" />
+        <input aria-label="upload" type="file" accept=".txt,.pdf,.epub,.mobi" tabIndex={0} disabled={loading} onChange={handleUpload} onClick={() => closeEdit()} className="hidden" />
       </label>
 
       {/* Edit Panel */}
