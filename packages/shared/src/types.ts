@@ -40,7 +40,7 @@ export interface Book {
 export interface BookContent {
   bookId: string;
   lines: string[];
-  langCode: string;
+  lang: string;
 }
 
 export interface BookDto {

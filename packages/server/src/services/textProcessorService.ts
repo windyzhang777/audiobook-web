@@ -7,13 +7,13 @@ export class TextProcessorService {
   private yield = () => new Promise((resolve) => setImmediate(resolve));
 
   detectLanguage = (text: string): string => {
-    const langCode = franc(text, { minLength: 100 });
-    return localeByLang[langCode] || localeByLang.default; // default to English
+    const lang = franc(text, { minLength: 100 });
+    return localeByLang[lang] || localeByLang.default; // default to English
   };
 
-  splitTextIntoLines = async (text: string, langCode: string = localeByLang.default): Promise<string[]> => {
+  splitTextIntoLines = async (text: string, lang: string = localeByLang.default): Promise<string[]> => {
     try {
-      const segmenter = new Intl.Segmenter(langCode, { granularity: 'sentence' });
+      const segmenter = new Intl.Segmenter(lang, { granularity: 'sentence' });
       const segments: string[] = [];
 
       const iterator = segmenter.segment(text);
@@ -45,9 +45,9 @@ export class TextProcessorService {
   };
 
   processBookText = async (text: string) => {
-    const langCode = this.detectLanguage(text);
-    const lines = await this.splitTextIntoLines(text, langCode);
-    return { langCode, lines };
+    const lang = this.detectLanguage(text);
+    const lines = await this.splitTextIntoLines(text, lang);
+    return { lang, lines };
   };
 
   extractText = async (filePath: string, fileType: string): Promise<string> => {

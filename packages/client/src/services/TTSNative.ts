@@ -2,8 +2,8 @@ import { type SpeechOptions } from '@audiobook/shared';
 
 export type TTSStatus = 'idle' | 'speaking' | 'paused';
 
-export interface TTSOptions extends Omit<SpeechOptions, 'voice'> {
-  voice?: SpeechSynthesisVoice;
+export interface TTSConfigs extends Omit<SpeechOptions, 'voice'> {
+  voice?: SpeechSynthesisVoice | string;
   lang?: string;
 }
 
@@ -19,18 +19,25 @@ export class TTSNative {
     };
   }
 
-  speak(text: string, options: TTSOptions = {}, onEnd?: () => void, onError?: () => void): void {
+  speak(text: string, configs: TTSConfigs = {}, onEnd?: () => void, onError?: () => void): void {
     // Cancel any ongoing speech
     this.stop();
 
     this.utterance = new SpeechSynthesisUtterance(text);
 
-    // Apply options
-    this.utterance.lang = options.lang ?? 'eng';
-    this.utterance.rate = options.rate ?? 1.0;
-    this.utterance.pitch = options.pitch ?? 1.0;
-    this.utterance.volume = options.volume ?? 1.0;
-    if (options.voice) this.utterance.voice = options.voice;
+    // Apply configs
+    this.utterance.lang = configs.lang ?? 'eng';
+    this.utterance.rate = configs.rate ?? 1.0;
+    this.utterance.pitch = configs.pitch ?? 1.0;
+    this.utterance.volume = configs.volume ?? 1.0;
+
+    if (configs.voice) {
+      if (typeof configs.voice === 'string') {
+        this.utterance.voice = this.getVoice(configs);
+      } else {
+        this.utterance.voice = configs.voice;
+      }
+    }
 
     this.utterance.onstart = () => {
       this.status = 'speaking';
@@ -96,8 +103,19 @@ export class TTSNative {
     return this.status;
   }
 
-  getVoice(): SpeechSynthesisVoice[] {
-    return this.synthesis.getVoices();
+  getVoices(configs: TTSConfigs): SpeechSynthesisVoice[] {
+    const voices = this.synthesis.getVoices();
+    const foundVoices = voices.filter((v) => v.lang === configs.lang && v.localService);
+    return foundVoices;
+  }
+
+  getVoice(configs: TTSConfigs): SpeechSynthesisVoice | null {
+    const foundVoices = this.getVoices(configs);
+    const defaultVoice = foundVoices[0] || null;
+    if (!configs.voice) return defaultVoice;
+
+    const found = foundVoices.find((v) => v.name === configs.voice || v.voiceURI === configs.voice);
+    return found || defaultVoice;
   }
 
   setRate(rate: number): void {
@@ -112,5 +130,3 @@ export class TTSNative {
     if (this.utterance) this.utterance.volume = volume;
   }
 }
-
-export const ttsNative = new TTSNative();

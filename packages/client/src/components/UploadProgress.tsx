@@ -74,7 +74,7 @@ export function UploadProgressDialog({ file, onComplete, onCancel }: UploadProgr
             {status === 'error' && 'Upload Failed'}
             {status === 'cancelled' && 'Upload Cancelled'}
           </h3>
-          {status === 'uploading' || status === 'completed' ? (
+          {status === 'completed' ? (
             <button onClick={handleCancel} className="text-gray-500 hover:text-gray-700 p-0!">
               <X size={20} />
             </button>

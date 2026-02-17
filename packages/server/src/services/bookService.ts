@@ -39,7 +39,7 @@ export class BookService {
       throw new Error(`Failed to extract text from file: ${error}`);
     }
 
-    const { langCode, lines } = await this.textProcessorService.processBookText(textContent);
+    const { lang, lines } = await this.textProcessorService.processBookText(textContent);
 
     const now = new Date().toISOString();
     const book: Book = {
@@ -60,7 +60,7 @@ export class BookService {
     const content: BookContent = {
       bookId: book.id,
       lines,
-      langCode,
+      lang,
     };
     this.bookRepository.setContent(book.id, content);
 

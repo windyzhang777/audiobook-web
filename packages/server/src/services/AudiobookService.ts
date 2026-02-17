@@ -24,8 +24,8 @@ export class AudiobookService {
     }
 
     const text = content.lines[lineIndex];
-    // Use the langCode stored during upload
-    const audioBuffer = await this.ttsService.synthesize(text, content.langCode);
+    // Use the lang stored during upload
+    const audioBuffer = await this.ttsService.synthesize(text, content.lang);
 
     return audioBuffer as Buffer;
   }
@@ -43,7 +43,7 @@ export class AudiobookService {
 
     try {
       for (const [index, line] of content.lines.entries()) {
-        const buffer = await this.ttsService.synthesize(line, content.langCode);
+        const buffer = await this.ttsService.synthesize(line, content.lang);
 
         await new Promise<void>((resolve, reject) => {
           const proceed = writeStream.write(buffer);

@@ -1,16 +1,23 @@
 import { useDebounceCallback } from '@/common/useDebounceCallback';
 import { api } from '@/services/api';
-import { ttsNative } from '@/services/TTSNative';
+import { TTSNative } from '@/services/TTSNative';
 import { calculateProgress, FIVE_MINUTES, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
 import { AArrowDown, AArrowUp, ArrowLeft, AudioLines, LibraryBig, Loader, Pause, Play, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 const SPEECH_RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-const VOICE_MODES = [
-  { id: 'google', label: 'Google AI (Neural2)' },
-  { id: 'system', label: 'System (Browser)' },
-];
+
+type VoiceType = 'system' | 'cloud';
+interface VoiceOption {
+  type: VoiceType;
+  id: string;
+  displayName: string;
+  enabled: boolean;
+}
+const VOICE_FALLBACK: VoiceOption = { type: 'system', id: 'system-default', displayName: 'System (Browser)', enabled: true };
+
+const ttsNative = new TTSNative();
 
 export const BookReader = () => {
   const navigate = useNavigate();
@@ -18,21 +25,23 @@ export const BookReader = () => {
 
   const [book, setBook] = useState<Book>();
   const [lines, setLines] = useState<BookContent['lines']>([]);
-  const [langCode, setLangCode] = useState('eng');
+  const [lang, setLang] = useState('eng');
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showJumpButton, setShowJumpButton] = useState(false);
   const [error, setError] = useState<string>();
   const [showRateIndicator, setShowRateIndicator] = useState(false);
   const [currentLine, setCurrentLine] = useState<Book['currentLine']>(0);
   const [fontSize, setFontSize] = useState<NonNullable<TextOptions['fontSize']>>(18);
   const [speechRate, setSpeechRate] = useState<NonNullable<SpeechOptions['rate']>>(1.0);
-  const [voice, setVoice] = useState<NonNullable<SpeechOptions['voice']>>('system');
+  const [selectedVoice, setSelectedVoice] = useState<VoiceOption>(VOICE_FALLBACK);
+
   const updatedBook = useMemo(
     () => ({
       currentLine,
-      settings: { ...(book?.settings || {}), fontSize, rate: speechRate, voice },
+      settings: { ...(book?.settings || {}), fontSize, rate: speechRate, voice: selectedVoice.id },
     }),
-    [book?.settings, currentLine, fontSize, speechRate, voice],
+    [book?.settings, currentLine, fontSize, speechRate, selectedVoice.id],
   );
 
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
@@ -42,7 +51,15 @@ export const BookReader = () => {
   const speechRateRef = useRef(speechRate);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserScrollRef = useRef(true);
+  const isUserFocusRef = useRef(false);
   const shouldSync = useRef(false);
+
+  const availableVoices = useMemo(() => {
+    const nativeVoices = ttsNative.getVoices({ lang: lang });
+    const nativeOptions: VoiceOption[] = nativeVoices.map((voice) => ({ type: 'system', id: voice.name, displayName: voice.name, enabled: true }));
+    const cloudOptions: VoiceOption[] = [{ type: 'cloud', id: 'google-neural2', displayName: 'Google AI (Neural2)', enabled: true }];
+    return [...(nativeOptions.length > 0 ? nativeOptions : [VOICE_FALLBACK]), ...cloudOptions];
+  }, [lang]);
 
   const loadBook = async (id: string) => {
     const book = await api.books.getById(id);
@@ -52,7 +69,8 @@ export const BookReader = () => {
     setCurrentLine(book.currentLine || 0);
     setFontSize(book.settings?.fontSize || 18);
     setSpeechRate(book.settings?.rate || 1.0);
-    setVoice(book.settings?.voice || 'system');
+    const found = availableVoices.find((voice) => voice.id === book.settings?.voice);
+    if (found) setSelectedVoice(found);
   };
 
   const loadBookContent = async (id: string) => {
@@ -60,10 +78,11 @@ export const BookReader = () => {
     if (!content) return;
 
     setLines(content.lines);
-    setLangCode(content.langCode);
+    setLang(content.lang);
   };
 
   const handlePlayPause = () => {
+    isUserFocusRef.current = false;
     if (isPlaying) {
       stopSpeech();
     } else {
@@ -85,6 +104,7 @@ export const BookReader = () => {
     }
     setTimeout(() => {
       isUserScrollRef.current = false;
+      isUserFocusRef.current = false;
     }, 100);
   };
 
@@ -102,6 +122,12 @@ export const BookReader = () => {
   const { run: debounceUpdate, flush: flushUpdate } = useDebounceCallback(handleBookUpdate, FIVE_MINUTES);
 
   const startSpeech = (index: number) => {
+    if (index >= lines.length) {
+      setIsPlaying(false);
+      playButtonRef.current?.focus();
+      return;
+    }
+
     // Kick off the silent audio loop to "claim" the hardware buttons
     const audio = silentAudioRef.current;
     audio.loop = true;
@@ -110,12 +136,12 @@ export const BookReader = () => {
     // Explicitly set the Playback State (Crucial for iOS)
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 
-    if (voice === 'google') {
+    if (selectedVoice.type === 'cloud') {
       ttsNative.stop();
       startCloudSpeech(index);
     }
 
-    if (voice === 'system') {
+    if (selectedVoice.type === 'system') {
       if (cloudAudioRef.current) cloudAudioRef.current.pause();
       startSystemSpeech(index);
     }
@@ -123,11 +149,6 @@ export const BookReader = () => {
 
   const startCloudSpeech = (startIndex: number) => {
     let current = startIndex;
-    if (current >= lines.length) {
-      setIsPlaying(false);
-      playButtonRef.current?.focus();
-      return;
-    }
 
     if (!cloudAudioRef.current) {
       cloudAudioRef.current = new Audio();
@@ -150,15 +171,10 @@ export const BookReader = () => {
 
   const startSystemSpeech = (startIndex: number) => {
     let current = startIndex;
-    if (current >= lines.length) {
-      setIsPlaying(false);
-      playButtonRef.current?.focus();
-      return;
-    }
 
     ttsNative.speak(
       lines[current],
-      { lang: langCode, rate: speechRateRef.current },
+      { lang: lang, rate: speechRateRef.current, voice: selectedVoice.id },
       () => {
         current++;
         setCurrentLine(current);
@@ -185,6 +201,16 @@ export const BookReader = () => {
     ttsNative.stop();
 
     setIsPlaying(false);
+  };
+
+  const handleJumpToRead = () => {
+    isUserScrollRef.current = false;
+    isUserFocusRef.current = false;
+    lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'auto', block: 'center' });
+    setTimeout(() => {
+      isUserScrollRef.current = false;
+      isUserFocusRef.current = false;
+    }, 100);
   };
 
   useEffect(() => {
@@ -250,8 +276,24 @@ export const BookReader = () => {
     if (isUserScrollRef.current || !isPlaying) return;
 
     lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-    lineRefs.current[currentLine]?.focus({ preventScroll: true });
+    if (isUserFocusRef.current === false) lineRefs.current[currentLine]?.focus({ preventScroll: true });
   }, [isPlaying, currentLine]);
+
+  useEffect(() => {
+    const target = lineRefs.current[currentLine];
+    if (!target || loading) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowJumpButton(!entry.isIntersecting);
+      },
+      { root: null, threshold: 0.5 },
+    );
+
+    observer.observe(target);
+
+    return () => observer.disconnect();
+  }, [currentLine, loading]);
 
   useEffect(() => {
     if ('mediaSession' in navigator) {
@@ -315,6 +357,14 @@ export const BookReader = () => {
           <h3 className="font-semibold">{book.title}</h3>
         </header>
 
+        {showJumpButton && isPlaying ? (
+          <button onClick={handleJumpToRead} className="fixed top-4 right-2 bg-amber-200 p-0! px-2!">
+            Jump to read
+          </button>
+        ) : (
+          <></>
+        )}
+
         {/* Book Lines */}
         <ol
           onKeyDown={(e) => {
@@ -371,15 +421,9 @@ export const BookReader = () => {
         }}
       >
         <button
-          onClick={() => {
-            isUserScrollRef.current = false;
-            lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'auto', block: 'center' });
-            setTimeout(() => {
-              isUserScrollRef.current = false;
-            }, 100);
-          }}
+          onClick={handleJumpToRead}
           title="Jump to read"
-          className={`absolute right-0 w-full h-1 rounded-full bg-amber-400 cursor-pointer pointer-events-auto transition-all duration-300 p-0! focus:outline-none! hover:scale-125`}
+          className={`absolute right-0 w-full h-1 rounded-full bg-amber-200 cursor-pointer pointer-events-auto transition-all duration-300 p-0! focus:outline-none! hover:scale-125`}
           style={{
             top: `${calculateProgress(currentLine, lines.length - 1)}%`,
             transform: 'translateY(-50%)',
@@ -389,7 +433,7 @@ export const BookReader = () => {
 
       {/* Rate Indicator */}
       <div
-        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 justify-center items-center rounded-2xl p-6 z-10 pointer-events-none bg-amber-400/80 backdrop-blur-mg shadow-lg transition-all duration-300 ease-out ${showRateIndicator ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
+        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 justify-center items-center rounded-2xl p-6 z-10 pointer-events-none bg-amber-400 backdrop-blur-mg shadow-lg transition-all duration-300 ease-out ${showRateIndicator ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
       >
         <AudioLines size={24} />
         <span className="font-semibold text-xl">{speechRate}x</span>
@@ -414,17 +458,27 @@ export const BookReader = () => {
         <span className="flex items-center gap-1" title="Select Voice">
           <UsersRound size={16} />
           <select
-            value={voice}
+            value={selectedVoice.id}
+            onClick={() => {
+              if (isPlaying) isUserFocusRef.current = true;
+            }}
             onChange={(e) => {
-              setVoice(e.target.value);
+              const found = availableVoices.find((voice) => voice.id === e.target.value);
+              if (found) setSelectedVoice(found);
               stopSpeech();
               playButtonRef.current?.focus();
             }}
             className="cursor-pointer text-center bg-transparent focus:outline-none"
           >
-            {VOICE_MODES.map((voice) => (
-              <option key={`voice-${voice.id}`} value={voice.id}>
-                {voice.label}
+            {availableVoices.map((voice) => (
+              <option
+                key={`voice-${voice.id}`}
+                value={voice.id}
+                style={{
+                  backgroundColor: voice.enabled ? '#fff' : 'gray',
+                }}
+              >
+                {voice.displayName}
               </option>
             ))}
           </select>
@@ -445,6 +499,9 @@ export const BookReader = () => {
             <AudioLines size={16} />
           </label>
           <select
+            onClick={() => {
+              if (isPlaying) isUserFocusRef.current = true;
+            }}
             onChange={(e) => {
               const newRate = parseFloat(e.target.value);
               setSpeechRate(newRate);
