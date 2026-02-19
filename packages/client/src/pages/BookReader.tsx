@@ -1,7 +1,7 @@
-import { useDebounceCallback } from '@/common/useDebounceCallback';
+import { useUpdateBook } from '@/common/useUpdateBook';
 import { api } from '@/services/api';
-import { TTSNative } from '@/services/TTSNative';
-import { calculateProgress, FIVE_MINUTES, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
+import { speechService, type SpeechConfigs } from '@/services/SpeechService';
+import { calculateProgress, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
 import { AArrowDown, AArrowUp, ArrowLeft, AudioLines, LibraryBig, Loader, Pause, Play, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -9,15 +9,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 const SPEECH_RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
 type VoiceType = 'system' | 'cloud';
-interface VoiceOption {
+export interface VoiceOption {
   type: VoiceType;
   id: string;
   displayName: string;
   enabled: boolean;
 }
 const VOICE_FALLBACK: VoiceOption = { type: 'system', id: 'system-default', displayName: 'System (Browser)', enabled: true };
-
-const ttsNative = new TTSNative();
 
 export const BookReader = () => {
   const navigate = useNavigate();
@@ -34,8 +32,8 @@ export const BookReader = () => {
   const [currentLine, setCurrentLine] = useState<Book['currentLine']>(0);
   const [fontSize, setFontSize] = useState<NonNullable<TextOptions['fontSize']>>(18);
   const [speechRate, setSpeechRate] = useState<NonNullable<SpeechOptions['rate']>>(1.0);
+  const [voice, setVoice] = useState<VoiceOption['id']>();
   const [selectedVoice, setSelectedVoice] = useState<VoiceOption>(VOICE_FALLBACK);
-
   const updatedBook = useMemo(
     () => ({
       currentLine,
@@ -43,178 +41,104 @@ export const BookReader = () => {
     }),
     [book?.settings, currentLine, fontSize, speechRate, selectedVoice.id],
   );
+  const canUpdate = !loading && JSON.stringify(updatedBook) !== JSON.stringify({ currentLine: book?.currentLine, settings: book?.settings });
 
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const silentAudioRef = useRef(new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'));
-  const cloudAudioRef = useRef<HTMLAudioElement | null>(null);
-  const playButtonRef = useRef<HTMLButtonElement>(null);
-  const speechRateRef = useRef(speechRate);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserScrollRef = useRef(true);
   const isUserFocusRef = useRef(false);
-  const shouldSync = useRef(false);
+
+  const speechConfigs = (rate: number = speechRate): SpeechConfigs => ({ bookId: id || '', lines, lang, rate, selectedVoice });
 
   const availableVoices = useMemo(() => {
-    const nativeVoices = ttsNative.getVoices({ lang: lang });
+    const nativeVoices = speechService.getNativeVoices(lang);
     const nativeOptions: VoiceOption[] = nativeVoices.map((voice) => ({ type: 'system', id: voice.name, displayName: voice.name, enabled: true }));
     const cloudOptions: VoiceOption[] = [{ type: 'cloud', id: 'google-neural2', displayName: 'Google AI (Neural2)', enabled: true }];
     return [...(nativeOptions.length > 0 ? nativeOptions : [VOICE_FALLBACK]), ...cloudOptions];
   }, [lang]);
 
-  const loadBook = async (id: string) => {
-    const book = await api.books.getById(id);
-    if (!book) return;
-
-    setBook(book);
-    setCurrentLine(book.currentLine || 0);
-    setFontSize(book.settings?.fontSize || 18);
-    setSpeechRate(book.settings?.rate || 1.0);
-    const found = availableVoices.find((voice) => voice.id === book.settings?.voice);
-    if (found) setSelectedVoice(found);
+  const forceControl = (isUserControl: boolean = true) => {
+    isUserScrollRef.current = isUserControl;
+    isUserFocusRef.current = isUserControl;
   };
 
-  const loadBookContent = async (id: string) => {
-    const content = await api.books.getContent(id);
-    if (!content) return;
-
-    setLines(content.lines);
-    setLang(content.lang);
+  const focusLine = (index: number = currentLine) => {
+    lineRefs.current[index]?.focus({ preventScroll: true });
   };
+
+  const scrollToLine = (index: number = currentLine, behavior: ScrollBehavior = 'smooth') => {
+    lineRefs.current[index]?.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
+  };
+
+  const { flushUpdate } = useUpdateBook(id, updatedBook, canUpdate, setBook, focusLine);
 
   const handlePlayPause = () => {
-    isUserFocusRef.current = false;
+    if (!id) return;
+    focusLine();
+
     if (isPlaying) {
-      stopSpeech();
+      speechService.stop();
     } else {
-      setIsPlaying(true);
+      const startFrom = currentLine >= lines.length ? 0 : currentLine;
       // if at the end, reset to start from the first line
-      if (currentLine >= lines.length) {
-        setCurrentLine(0);
-        startSpeech(0);
-      } else {
-        startSpeech(currentLine);
-      }
+      if (startFrom === 0) setCurrentLine(0);
+
+      speechService.start(startFrom, speechConfigs());
     }
   };
 
   const handleLineClick = (lineIndex: number) => {
     setCurrentLine(lineIndex);
     if (isPlaying) {
-      stopSpeech();
-    }
-    setTimeout(() => {
-      isUserScrollRef.current = false;
-      isUserFocusRef.current = false;
-    }, 100);
-  };
-
-  const handleBookUpdate = async (updatedBook: Partial<Book>) => {
-    if (!id) return;
-
-    try {
-      await api.books.update(id, updatedBook);
-      setBook((prev) => (prev ? { ...prev, ...updatedBook } : prev));
-    } catch (error) {
-      console.error('Failed to update book: ', updatedBook, error);
+      speechService.resume(lineIndex, speechConfigs());
+      forceControl(false);
     }
   };
 
-  const { run: debounceUpdate, flush: flushUpdate } = useDebounceCallback(handleBookUpdate, FIVE_MINUTES);
+  const moveToLine = (lineIndex: number) => {
+    if (lineIndex == currentLine) return;
 
-  const startSpeech = (index: number) => {
-    if (index >= lines.length) {
-      setIsPlaying(false);
-      playButtonRef.current?.focus();
-      return;
+    forceControl();
+    setCurrentLine(lineIndex);
+    scrollToLine(lineIndex);
+    focusLine(lineIndex);
+
+    if (isPlaying) {
+      speechService.resume(lineIndex, speechConfigs());
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        forceControl(false);
+      }, 1000);
     }
-
-    // Kick off the silent audio loop to "claim" the hardware buttons
-    const audio = silentAudioRef.current;
-    audio.loop = true;
-    audio.play().catch((e) => console.error('Audio play failed:', e));
-
-    // Explicitly set the Playback State (Crucial for iOS)
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-
-    if (selectedVoice.type === 'cloud') {
-      ttsNative.stop();
-      startCloudSpeech(index);
-    }
-
-    if (selectedVoice.type === 'system') {
-      if (cloudAudioRef.current) cloudAudioRef.current.pause();
-      startSystemSpeech(index);
-    }
-  };
-
-  const startCloudSpeech = (startIndex: number) => {
-    let current = startIndex;
-
-    if (!cloudAudioRef.current) {
-      cloudAudioRef.current = new Audio();
-      cloudAudioRef.current.onerror = () => setIsPlaying(false);
-    }
-
-    // Set source to server route
-    // The speechRate is applied directly to the audio element
-    cloudAudioRef.current.src = `/api/books/${id}/audio/${startIndex}`;
-    cloudAudioRef.current.playbackRate = speechRateRef.current;
-
-    cloudAudioRef.current.onended = () => {
-      current++;
-      setCurrentLine(current);
-      startCloudSpeech(current);
-    };
-
-    cloudAudioRef.current.play().catch((e) => console.error('Playback failed:', e));
-  };
-
-  const startSystemSpeech = (startIndex: number) => {
-    let current = startIndex;
-
-    ttsNative.speak(
-      lines[current],
-      { lang: lang, rate: speechRateRef.current, voice: selectedVoice.id },
-      () => {
-        current++;
-        setCurrentLine(current);
-        startSystemSpeech(current);
-      },
-      () => setIsPlaying(false),
-    );
-  };
-
-  const stopSpeech = () => {
-    if (silentAudioRef.current) silentAudioRef.current.pause();
-
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-
-    // Cloud cleanup
-    if (cloudAudioRef.current) {
-      cloudAudioRef.current.pause();
-      cloudAudioRef.current.onended = null;
-      cloudAudioRef.current.src = '';
-      cloudAudioRef.current = null;
-    }
-
-    // System cleanup
-    ttsNative.stop();
-
-    setIsPlaying(false);
   };
 
   const handleJumpToRead = () => {
-    isUserScrollRef.current = false;
-    isUserFocusRef.current = false;
-    lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'auto', block: 'center' });
-    setTimeout(() => {
-      isUserScrollRef.current = false;
-      isUserFocusRef.current = false;
-    }, 100);
+    scrollToLine(currentLine, 'auto');
+    focusLine();
+    forceControl(false);
   };
 
   useEffect(() => {
     if (!id) return;
+
+    const loadBook = async (id: string) => {
+      const book = await api.books.getById(id);
+      if (!book) return;
+
+      setBook(book);
+      setCurrentLine(book.currentLine || 0);
+      setFontSize(book.settings?.fontSize || 18);
+      setSpeechRate(book.settings?.rate || 1.0);
+      setVoice(book.settings?.voice || VOICE_FALLBACK.id);
+    };
+
+    const loadBookContent = async (id: string) => {
+      const content = await api.books.getContent(id);
+      if (!content) return;
+
+      setLines(content.lines);
+      setLang(content.lang);
+    };
 
     const loadData = async (id: string) => {
       try {
@@ -224,64 +148,42 @@ export const BookReader = () => {
         console.error('Failed to load book: ', error);
       } finally {
         setLoading(false);
-        setTimeout(() => {
-          playButtonRef.current?.focus();
-        }, 100);
       }
     };
 
     loadData(id);
-  }, [id]);
 
-  useEffect(() => {
-    const handlePageVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        if (shouldSync.current) return;
-
-        shouldSync.current = true;
-        flushUpdate();
-      } else if (document.visibilityState === 'visible') {
-        shouldSync.current = false;
-        setTimeout(() => {
-          playButtonRef.current?.focus();
-        }, 100);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handlePageVisibility);
-    window.addEventListener('pagehide', handlePageVisibility);
+    speechService.onLineEnd = (lineIndex) => setCurrentLine(lineIndex);
+    speechService.onIsPlayingChange = (playing) => setIsPlaying(playing);
+    speechService.onFocus = (lineIndex) => focusLine(lineIndex);
 
     return () => {
-      stopSpeech();
-      ttsNative.stop();
+      flushUpdate();
 
-      document.removeEventListener('visibilitychange', handlePageVisibility);
-      window.removeEventListener('pagehide', handlePageVisibility);
+      speechService.stop();
+      speechService.onIsPlayingChange = null;
+      speechService.onLineEnd = null;
+
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [id]);
-
-  useEffect(() => {
-    const hasUpdated = JSON.stringify(updatedBook) !== JSON.stringify({ currentLine: book?.currentLine, settings: book?.settings });
-
-    if (!loading && book && updatedBook && hasUpdated) {
-      debounceUpdate(updatedBook);
-    }
-  }, [debounceUpdate, loading, book, updatedBook]);
-
-  useEffect(() => {
-    return () => flushUpdate();
-  }, [flushUpdate]);
 
   useEffect(() => {
     if (isUserScrollRef.current || !isPlaying) return;
 
-    lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-    if (isUserFocusRef.current === false) lineRefs.current[currentLine]?.focus({ preventScroll: true });
+    const handleAutoScroll = () => {
+      lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      if (isUserFocusRef.current === false) lineRefs.current[currentLine]?.focus({ preventScroll: true });
+    };
+
+    handleAutoScroll();
   }, [isPlaying, currentLine]);
 
   useEffect(() => {
     const target = lineRefs.current[currentLine];
     if (!target || loading) return;
+
+    lineRefs.current[currentLine]?.focus({ preventScroll: true });
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -296,34 +198,14 @@ export const BookReader = () => {
   }, [currentLine, loading]);
 
   useEffect(() => {
-    if ('mediaSession' in navigator) {
-      // Set the Play/Pause handlers (AirPod Taps)
-      navigator.mediaSession.setActionHandler('play', () => handlePlayPause());
+    if (!voice || availableVoices.length <= 2) return;
 
-      navigator.mediaSession.setActionHandler('pause', () => handlePlayPause());
+    const found = availableVoices.find((v) => v.id === voice);
 
-      // Map skip buttons to lines
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-        const next = Math.min(currentLine + 1, lines.length - 1);
-        handleLineClick(next);
-      });
-
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        const prev = Math.max(currentLine - 1, 0);
-        handleLineClick(prev);
-      });
+    if (found) {
+      setSelectedVoice(found);
     }
-
-    // Cleanup handlers when component unmounts
-    return () => {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', null);
-        navigator.mediaSession.setActionHandler('pause', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-      }
-    };
-  }, [currentLine, handlePlayPause]);
+  }, [availableVoices, voice]);
 
   if (loading) {
     return (
@@ -344,11 +226,7 @@ export const BookReader = () => {
 
   return (
     <div className="min-h-full relative">
-      <section
-        onWheel={() => (isUserScrollRef.current = true)}
-        onTouchMove={() => (isUserScrollRef.current = true)}
-        className="relative min-h-[90vh] h-[50vh] max-h-3/4 overflow-auto px-12 pt-6 pb-6 leading-loose"
-      >
+      <section onWheel={() => forceControl()} onTouchMove={() => forceControl()} className="relative min-h-[90vh] h-[50vh] max-h-3/4 overflow-auto px-12 pt-6 pb-6 leading-loose">
         <header className="relative text-center mb-4">
           <button className="absolute top-2 left-0 p-0!" onClick={() => navigate('/')} title="Back to Books">
             <ArrowLeft size={16} />
@@ -357,8 +235,8 @@ export const BookReader = () => {
           <h3 className="font-semibold">{book.title}</h3>
         </header>
 
-        {showJumpButton && isPlaying ? (
-          <button onClick={handleJumpToRead} className="fixed top-4 right-2 bg-amber-200 p-0! px-2!">
+        {showJumpButton ? (
+          <button onClick={handleJumpToRead} className="fixed top-4 right-6 bg-amber-200 p-0! px-2!">
             Jump to read
           </button>
         ) : (
@@ -368,25 +246,15 @@ export const BookReader = () => {
         {/* Book Lines */}
         <ol
           onKeyDown={(e) => {
-            let nextLine = currentLine;
             if (e.key === 'ArrowDown') {
               e.preventDefault();
-              if (isPlaying) handlePlayPause();
-              nextLine = Math.min(currentLine + 1, lines.length - 1);
+              moveToLine(Math.min(currentLine + 1, lines.length - 1));
             } else if (e.key === 'ArrowUp') {
               e.preventDefault();
-              if (isPlaying) handlePlayPause();
-              nextLine = Math.max(currentLine - 1, 0);
+              moveToLine(Math.max(currentLine - 1, 0));
             } else if (e.key === ' ' || e.key === 'Enter') {
               e.preventDefault();
               handlePlayPause();
-              return;
-            }
-
-            if (nextLine !== currentLine) {
-              setCurrentLine(nextLine);
-              lineRefs.current[nextLine]?.scrollIntoView({ behavior: 'auto', block: 'center' });
-              lineRefs.current[nextLine]?.focus();
             }
           }}
           className="text-left"
@@ -433,7 +301,7 @@ export const BookReader = () => {
 
       {/* Rate Indicator */}
       <div
-        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 justify-center items-center rounded-2xl p-6 z-10 pointer-events-none bg-amber-400 backdrop-blur-mg shadow-lg transition-all duration-300 ease-out ${showRateIndicator ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
+        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-4 justify-center items-center rounded-2xl p-6 z-10 pointer-events-none bg-amber-200 backdrop-blur-mg shadow-lg transition-all duration-300 ease-out ${showRateIndicator ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}
       >
         <AudioLines size={24} />
         <span className="font-semibold text-xl">{speechRate}x</span>
@@ -446,29 +314,32 @@ export const BookReader = () => {
         </button>
 
         {isPlaying ? (
-          <button ref={playButtonRef} onClick={handlePlayPause} title="Pause">
+          <button onClick={handlePlayPause} title="Pause">
             <Pause className="w-7 h-7 p-1.5 rounded-full bg-gray-600 text-white hover:bg-gray-700 active:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50" />
           </button>
         ) : (
-          <button ref={playButtonRef} onClick={handlePlayPause} title="Play">
+          <button onClick={handlePlayPause} title="Play">
             <Play className="w-7 h-7 p-1.5 rounded-full bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50" />
           </button>
         )}
 
-        <span className="flex items-center gap-1" title="Select Voice">
-          <UsersRound size={16} />
+        <span className="relative p-0!" title="Select Voice">
+          <label htmlFor="voice-select" className="absolute top-1/2 -translate-y-1/2 left-0">
+            <UsersRound size={16} />
+          </label>
           <select
+            id="voice-select"
             value={selectedVoice.id}
             onClick={() => {
               if (isPlaying) isUserFocusRef.current = true;
             }}
             onChange={(e) => {
-              const found = availableVoices.find((voice) => voice.id === e.target.value);
+              const found = availableVoices.find((voiceOption) => voiceOption.id === e.target.value);
               if (found) setSelectedVoice(found);
-              stopSpeech();
-              playButtonRef.current?.focus();
+              speechService.stop();
+              focusLine();
             }}
-            className="cursor-pointer text-center bg-transparent focus:outline-none"
+            className="h-full w-fit pl-4 cursor-pointer text-center bg-transparent focus:outline-none"
           >
             {availableVoices.map((voice) => (
               <option
@@ -494,33 +365,32 @@ export const BookReader = () => {
           </button>
         </span>
 
-        <span className="flex items-center gap-1" title="Speech Rate">
-          <label>
+        <span className="relative p-0!" title="Speech Rate">
+          <label htmlFor="rate-select" className="absolute top-1/2 -translate-y-1/2 left-0">
             <AudioLines size={16} />
           </label>
           <select
+            id="rate-select"
+            value={speechRate}
             onClick={() => {
               if (isPlaying) isUserFocusRef.current = true;
             }}
             onChange={(e) => {
               const newRate = parseFloat(e.target.value);
               setSpeechRate(newRate);
-              speechRateRef.current = newRate;
+
+              // Rate Indicator (Debounced)
               if (timerRef.current) clearTimeout(timerRef.current);
               setShowRateIndicator(true);
               timerRef.current = setTimeout(() => {
                 setShowRateIndicator(false);
               }, 1200);
+
               if (isPlaying) {
-                stopSpeech();
-                setTimeout(() => {
-                  setIsPlaying(true);
-                  startSpeech(currentLine);
-                }, 100);
+                speechService.start(currentLine, speechConfigs(newRate));
               }
             }}
-            value={speechRate}
-            className="cursor-pointer text-center bg-transparent focus:outline-none"
+            className="h-full min-w-30 pl-4 cursor-pointer text-center bg-transparent focus:outline-none"
           >
             {SPEECH_RATE_OPTIONS.map((rate) => (
               <option key={`rate-${rate}`} value={rate}>
