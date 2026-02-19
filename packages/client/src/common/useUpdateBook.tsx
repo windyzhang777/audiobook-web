@@ -60,5 +60,11 @@ export function useUpdateBook(
     };
   }, [id]);
 
+  useEffect(() => {
+    return () => {
+      flushUpdate();
+    };
+  }, [flushUpdate]);
+
   return { flushUpdate };
 }

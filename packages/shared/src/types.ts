@@ -31,6 +31,7 @@ export interface Book {
   createdAt: string; // ISO string
   lastRead?: string; // ISO string
   updatedAt: string; // ISO string
+  lastCompleted?: string; // ISO string
 
   // setting for TTS per book
   settings?: SpeechOptions & TextOptions;

@@ -34,12 +34,14 @@ export const BookReader = () => {
   const [speechRate, setSpeechRate] = useState<NonNullable<SpeechOptions['rate']>>(1.0);
   const [voice, setVoice] = useState<VoiceOption['id']>();
   const [selectedVoice, setSelectedVoice] = useState<VoiceOption>(VOICE_FALLBACK);
+  const [lastCompleted, setLastCompleted] = useState<string>();
   const updatedBook = useMemo(
     () => ({
       currentLine,
+      lastCompleted,
       settings: { ...(book?.settings || {}), fontSize, rate: speechRate, voice: selectedVoice.id },
     }),
-    [book?.settings, currentLine, fontSize, speechRate, selectedVoice.id],
+    [book?.settings, currentLine, lastCompleted, fontSize, speechRate, selectedVoice.id],
   );
   const canUpdate = !loading && JSON.stringify(updatedBook) !== JSON.stringify({ currentLine: book?.currentLine, settings: book?.settings });
 
@@ -56,6 +58,11 @@ export const BookReader = () => {
     const cloudOptions: VoiceOption[] = [{ type: 'cloud', id: 'google-neural2', displayName: 'Google AI (Neural2)', enabled: true }];
     return [...(nativeOptions.length > 0 ? nativeOptions : [VOICE_FALLBACK]), ...cloudOptions];
   }, [lang]);
+
+  const navigateBack = async (replace: boolean = false) => {
+    await flushUpdate();
+    navigate('/', { replace });
+  };
 
   const forceControl = (isUserControl: boolean = true) => {
     isUserScrollRef.current = isUserControl;
@@ -156,13 +163,14 @@ export const BookReader = () => {
     speechService.onLineEnd = (lineIndex) => setCurrentLine(lineIndex);
     speechService.onIsPlayingChange = (playing) => setIsPlaying(playing);
     speechService.onFocus = (lineIndex) => focusLine(lineIndex);
+    speechService.onBookCompleted = (date) => setLastCompleted(date);
 
     return () => {
-      flushUpdate();
-
       speechService.stop();
-      speechService.onIsPlayingChange = null;
       speechService.onLineEnd = null;
+      speechService.onIsPlayingChange = null;
+      speechService.onFocus = null;
+      speechService.onBookCompleted = null;
 
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -219,7 +227,7 @@ export const BookReader = () => {
     return (
       <div className="absolute top-0 left-0 h-full w-full bg-white opacity-50 flex flex-col justify-center items-center gap-2">
         {error}
-        <button onClick={() => navigate('/', { replace: true })}>Go Back</button>
+        <button onClick={() => navigateBack(true)}>Go Back</button>
       </div>
     );
   }
@@ -228,7 +236,7 @@ export const BookReader = () => {
     <div className="min-h-full relative">
       <section onWheel={() => forceControl()} onTouchMove={() => forceControl()} className="relative min-h-[90vh] h-[50vh] max-h-3/4 overflow-auto px-12 pt-6 pb-6 leading-loose">
         <header className="relative text-center mb-4">
-          <button className="absolute top-2 left-0 p-0!" onClick={() => navigate('/')} title="Back to Books">
+          <button className="absolute top-2 left-0 p-0!" onClick={() => navigateBack()} title="Back to Books">
             <ArrowLeft size={16} />
             <LibraryBig size={16} />
           </button>
@@ -309,7 +317,7 @@ export const BookReader = () => {
 
       {/* Controller Panel */}
       <div className="fixed bottom-0 left-0 h-[10vh] w-full bg-gray-50 flex justify-between items-center p-8 text-sm [&>*]:px-2 [&>*]:py-4 [&>*]:h-12 [&>*:hover]:bg-gray-100 [&>*:hover]:rounded-lg">
-        <button className="text-sm" onClick={() => navigate('/')} title="Back to Books">
+        <button className="text-sm" onClick={() => navigateBack()} title="Back to Books">
           <LibraryBig size={16} />
         </button>
 

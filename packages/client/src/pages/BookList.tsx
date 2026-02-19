@@ -1,6 +1,6 @@
 import { UploadProgressDialog } from '@/components/UploadProgress';
 import { api } from '@/services/api';
-import { calculateProgress, type Book } from '@audiobook/shared';
+import { calculateProgress, formatLocaleDateString, type Book } from '@audiobook/shared';
 import { BookOpen, Loader, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -10,8 +10,12 @@ export const BookList = () => {
   const [loading, setLoading] = useState(true);
   const [uploadingFile, setUploadingFile] = useState<{ file: File } | null>(null);
   const [isEdit, setIsEdit] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(true);
   const [selectedBooks, setSelectedBooks] = useState<Book['id'][]>([]);
+
   const canDelete = isEdit && selectedBooks.length > 0;
+  const booksCompleted = books.filter((book) => book.lastCompleted);
+  const booksToRead = books.filter((book) => !book.lastCompleted);
 
   const navigate = useNavigate();
 
@@ -74,7 +78,7 @@ export const BookList = () => {
   }
 
   return (
-    <div className="min-h-full max-w-2xl mx-auto py-8">
+    <div className="min-h-full max-w-2xl mx-auto pt-8 pb-30 flex flex-col">
       <header className="text-center mb-4">
         <h3 className="font-semibold">My Books</h3>
       </header>
@@ -106,20 +110,33 @@ export const BookList = () => {
         >
           <Trash2 size={16} />
         </button>
-        <button aria-label={isEdit ? 'Done' : 'Edit'} onClick={handleEditBooks}>
+        <button aria-label={isEdit ? 'Done' : 'Edit'} onClick={handleEditBooks} className="hover:text-gray-600 transition-colors">
           {isEdit ? 'Done' : 'Edit'}
         </button>
       </div>
 
-      {/* Books */}
+      {/* No Books */}
+      {books.length === 0 ? (
+        <div className="text-center text-gray-500 col-span-full">
+          <BookOpen className="mx-auto mb-4 opacity-50" />
+          <p>No books yet. Upload your first book to get started!</p>
+        </div>
+      ) : (
+        <></>
+      )}
+
+      {/* Books To Read */}
       <div className="py-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {books.length === 0 ? (
+        {booksToRead.length === 0 && booksCompleted.length > 0 ? (
           <div className="text-center text-gray-500 col-span-full">
             <BookOpen className="mx-auto mb-4 opacity-50" />
-            <p>No books yet. Upload your first book to get started!</p>
+            <p>Upload some more!</p>
           </div>
         ) : (
-          books.map((book) => {
+          <></>
+        )}
+        {booksToRead.length > 0 ? (
+          booksToRead.map((book) => {
             const progress = calculateProgress(book.currentLine, book.totalLines);
             return (
               <div
@@ -164,15 +181,95 @@ export const BookList = () => {
                 {book.lastRead ? (
                   <div className="text-xs">Progress: {progress}%</div>
                 ) : (
-                  <div className="bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent text-xs font-extrabold">
+                  <div
+                    className={`${isEdit ? '' : 'shake-active'} bg-gradient-to-r from-red-500 via-yellow-500 via-green-500 via-blue-500 via-indigo-500 to-purple-500 bg-clip-text text-transparent text-xs font-extrabold`}
+                  >
                     START READING!
                   </div>
                 )}
               </div>
             );
           })
+        ) : (
+          <></>
         )}
       </div>
+
+      {/* Books Completed */}
+      {booksCompleted.length > 0 ? (
+        <>
+          <div className="my-4 text-xs text-gray-400 text-center flex-1 flex justify-center items-end">
+            <button
+              aria-label="completed-books"
+              title={`${showCompleted ? 'Collapse' : 'Expand'} completed books`}
+              onClick={() => {
+                closeEdit();
+                setShowCompleted((prev) => !prev);
+              }}
+              className="hover:text-gray-600 transition-colors"
+            >
+              Completed ({booksCompleted.length})
+            </button>
+          </div>
+          <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${showCompleted ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+            <div className="overflow-hidden">
+              <div className="py-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {booksCompleted.length === 0 ? (
+                  <></>
+                ) : (
+                  booksCompleted.map((book) => {
+                    return (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        key={`book-${book.id}`}
+                        aria-label={`Book ${book.id}`}
+                        onClick={() => {
+                          if (isEdit) {
+                            setSelectedBooks((prev) => {
+                              if (prev.includes(book.id)) {
+                                return prev.filter((id) => id !== book.id);
+                              } else {
+                                return [...prev, book.id];
+                              }
+                            });
+                          } else {
+                            closeEdit();
+                            navigate(`/book/${book.id}`);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === ' ' || e.key === 'Enter') {
+                            e.preventDefault();
+                            if (isEdit) {
+                              setSelectedBooks((prev) => {
+                                if (prev.includes(book.id)) {
+                                  return prev.filter((id) => id !== book.id);
+                                } else {
+                                  return [...prev, book.id];
+                                }
+                              });
+                            } else {
+                              navigate(`/book/${book.id}`);
+                            }
+                          }
+                        }}
+                        className="flex flex-col justify-center items-center gap-4 bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer p-4"
+                        style={{ backgroundColor: selectedBooks.includes(book.id) ? 'lightgray' : '' }}
+                      >
+                        <h3 className="font-medium truncate">{book.title}</h3>
+                        <div className="text-xs">Last Read: {formatLocaleDateString(new Date(book.lastRead!))}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <></>
+      )}
 
       {/* Upload Progress Dialog */}
       {uploadingFile && <UploadProgressDialog file={uploadingFile.file} onComplete={() => setUploadingFile(null)} onCancel={() => setUploadingFile(null)} />}

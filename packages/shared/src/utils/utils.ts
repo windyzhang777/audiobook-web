@@ -30,6 +30,11 @@ export const calculateProgress = (currentLine: number, totalLines: number): numb
   return Math.round((currentLine / totalLines) * 100);
 };
 
+export const getNowISOString = () => {
+  const now = new Date();
+  return now.toISOString();
+};
+
 export const formatLocaleDateString = (date: Date): string => {
   return new Intl.DateTimeFormat('en-US', {
     year: 'numeric',

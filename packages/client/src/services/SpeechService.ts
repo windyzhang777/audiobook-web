@@ -1,5 +1,5 @@
 import type { VoiceOption } from '@/pages/BookReader';
-import type { BookContent, SpeechOptions } from '@audiobook/shared';
+import { getNowISOString, type BookContent, type SpeechOptions } from '@audiobook/shared';
 import { TTSNative, type TTSStatus } from './TTSNative';
 
 export interface SpeechConfigs extends BookContent, SpeechOptions {
@@ -17,6 +17,7 @@ export class SpeechService {
   onLineEnd: ((lineIndex: number) => void) | null = null;
   onIsPlayingChange: ((isPlaying: boolean) => void) | null = null;
   onFocus: ((lineIndex: number) => void) | null = null;
+  onBookCompleted: ((dateString: string) => void) | null = null;
 
   private constructor() {
     this.silentAudio.loop = true;
@@ -45,6 +46,7 @@ export class SpeechService {
     if (index < 0 || index >= configs.lines.length) {
       this.onIsPlayingChange?.(false);
       this.onFocus?.(index);
+      this.onBookCompleted?.(getNowISOString());
       return;
     }
 
