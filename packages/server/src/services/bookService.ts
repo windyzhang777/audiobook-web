@@ -61,6 +61,10 @@ export class BookService {
       bookId: book.id,
       lines,
       lang,
+      pagination: {
+        total: lines.length,
+        hasMore: true,
+      },
     };
     this.bookRepository.setContent(book.id, content);
 
@@ -93,12 +97,26 @@ export class BookService {
     return this.bookRepository.delete(id);
   };
 
-  getContent = (id: string) => {
-    const content = this.bookRepository.getContent(id);
-    if (!content) {
+  getContent = (id: string, offset: number, limit: number) => {
+    const fullContent = this.bookRepository.getContent(id);
+    if (!fullContent) {
       throw new Error(`Content for book with ID ${id} not found`);
     }
-    return content;
+
+    // Slice the lines array to return only the requested batch
+    const paginatedLines = fullContent.lines.slice(offset, offset + limit);
+
+    return {
+      bookId: id,
+      lines: paginatedLines,
+      lang: fullContent.lang,
+      pagination: {
+        offset,
+        limit,
+        total: fullContent.lines.length,
+        hasMore: offset + limit < fullContent.lines.length,
+      },
+    };
   };
 
   private deleteFile = (filePath: string) => {

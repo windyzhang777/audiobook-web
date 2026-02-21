@@ -1,3 +1,5 @@
+export const PAGE_SIZE = 50;
+
 export const ONE_MINUTE = 60 * 1000;
 export const FIVE_MINUTES = 60 * 1000;
 export const ONE_HOUR = 60 * 60 * 1000;

@@ -10,6 +10,7 @@ export function useUpdateBook(
   setBook: React.Dispatch<React.SetStateAction<Book | undefined>>,
   focusLine: (index?: number) => void,
 ) {
+  console.log(`canUpdate :`, canUpdate);
   const shouldSync = useRef(false);
   const updatedBookRef = useRef(updatedBook);
 
@@ -37,6 +38,8 @@ export function useUpdateBook(
   }, [debounceUpdate, canUpdate]);
 
   useEffect(() => {
+    console.log(`shouldSync.current :`, shouldSync.current);
+
     const handlePageVisibility = () => {
       if (document.visibilityState === 'hidden') {
         if (shouldSync.current) return;
@@ -44,6 +47,7 @@ export function useUpdateBook(
         shouldSync.current = true;
         flushUpdate();
       } else if (document.visibilityState === 'visible') {
+        console.log(`document.visibilityState :`, document.visibilityState);
         shouldSync.current = false;
         setTimeout(() => {
           focusLine?.();
@@ -57,11 +61,7 @@ export function useUpdateBook(
     return () => {
       document.removeEventListener('visibilitychange', handlePageVisibility);
       window.removeEventListener('pagehide', handlePageVisibility);
-    };
-  }, [id]);
 
-  useEffect(() => {
-    return () => {
       flushUpdate();
     };
   }, [flushUpdate]);

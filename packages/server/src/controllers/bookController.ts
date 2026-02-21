@@ -1,6 +1,6 @@
 import { AudiobookService } from '@/services/AudiobookService';
 import { BookService } from '@/services/bookService';
-import { fixEncoding } from '@audiobook/shared';
+import { fixEncoding, PAGE_SIZE } from '@audiobook/shared';
 import { Request, Response } from 'express';
 import path from 'path';
 
@@ -70,8 +70,13 @@ export class BookController {
   };
 
   getContent = (req: Request, res: Response) => {
+    const { id } = req.params;
+    // Parse pagination params from query (e.g., ?offset=0&limit=50)
+    const offset = parseInt(req.query.offset as string) || 0;
+    const limit = parseInt(req.query.limit as string) || PAGE_SIZE;
+
     try {
-      const content = this.bookService.getContent(req.params.id as string);
+      const content = this.bookService.getContent(id as string, offset, limit);
       res.json(content);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error retrieving book content';

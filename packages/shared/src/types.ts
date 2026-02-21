@@ -42,6 +42,14 @@ export interface BookContent {
   bookId: string;
   lines: string[];
   lang: string;
+  pagination: BookContentPagination;
+}
+
+export interface BookContentPagination {
+  offset?: number;
+  limit?: number;
+  total: number;
+  hasMore: boolean;
 }
 
 export interface BookDto {

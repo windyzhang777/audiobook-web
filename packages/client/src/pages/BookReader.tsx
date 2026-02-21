@@ -1,10 +1,12 @@
 import { useUpdateBook } from '@/common/useUpdateBook';
+import { triggerSuccess } from '@/helper';
 import { api } from '@/services/api';
 import { speechService, type SpeechConfigs } from '@/services/SpeechService';
-import { calculateProgress, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
-import { AArrowDown, AArrowUp, ArrowLeft, AudioLines, LibraryBig, Loader, Pause, Play, UsersRound } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { calculateProgress, PAGE_SIZE, type Book, type BookContent, type SpeechOptions, type TextOptions } from '@audiobook/shared';
+import { AArrowDown, AArrowUp, ArrowLeft, AudioLines, LibraryBig, Loader, Loader2, Pause, Play, UsersRound } from 'lucide-react';
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Virtuoso, type LocationOptions, type VirtuosoHandle } from 'react-virtuoso';
 
 const SPEECH_RATE_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 
@@ -25,6 +27,9 @@ export const BookReader = () => {
   const [lines, setLines] = useState<BookContent['lines']>([]);
   const [lang, setLang] = useState('eng');
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalLines, setTotalLines] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showJumpButton, setShowJumpButton] = useState(false);
   const [error, setError] = useState<string>();
@@ -47,8 +52,11 @@ export const BookReader = () => {
 
   const lineRefs = useRef<(HTMLLIElement | null)[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const forceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isUserScrollRef = useRef(true);
   const isUserFocusRef = useRef(false);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   const speechConfigs = (rate: number = speechRate): SpeechConfigs => ({ bookId: id || '', lines, lang, rate, selectedVoice });
 
@@ -70,14 +78,21 @@ export const BookReader = () => {
   };
 
   const focusLine = (index: number = currentLine) => {
-    lineRefs.current[index]?.focus({ preventScroll: true });
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      const el = lineRefs.current[index];
+      if (el) {
+        el.focus({ preventScroll: true });
+      } else {
+        const list = document.querySelector('[data-virtuoso-list]');
+        (list as HTMLElement)?.focus({ preventScroll: true });
+      }
+    }, 100);
   };
 
-  const scrollToLine = (index: number = currentLine, behavior: ScrollBehavior = 'smooth') => {
-    lineRefs.current[index]?.scrollIntoView({ behavior, block: 'center', inline: 'nearest' });
+  const scrollToLine = (index: number = currentLine, behavior: LocationOptions['behavior'] = 'smooth') => {
+    virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior });
   };
-
-  const { flushUpdate } = useUpdateBook(id, updatedBook, canUpdate, setBook, focusLine);
 
   const handlePlayPause = () => {
     if (!id) return;
@@ -86,7 +101,7 @@ export const BookReader = () => {
     if (isPlaying) {
       speechService.stop();
     } else {
-      const startFrom = currentLine >= lines.length ? 0 : currentLine;
+      const startFrom = currentLine >= totalLines ? 0 : currentLine;
       // if at the end, reset to start from the first line
       if (startFrom === 0) setCurrentLine(0);
 
@@ -96,6 +111,8 @@ export const BookReader = () => {
 
   const handleLineClick = (lineIndex: number) => {
     setCurrentLine(lineIndex);
+    focusLine(lineIndex);
+
     if (isPlaying) {
       speechService.resume(lineIndex, speechConfigs());
       forceControl(false);
@@ -112,10 +129,10 @@ export const BookReader = () => {
 
     if (isPlaying) {
       speechService.resume(lineIndex, speechConfigs());
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
+      if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
+      forceTimerRef.current = setTimeout(() => {
         forceControl(false);
-      }, 1000);
+      }, 100);
     }
   };
 
@@ -125,45 +142,64 @@ export const BookReader = () => {
     forceControl(false);
   };
 
+  const loadBookContent = async (id: string, offset: number = 0, limit: number = PAGE_SIZE) => {
+    const content = await api.books.getContent(id, offset, limit);
+    if (!content) return;
+
+    setLines((prev) => (offset === 0 ? content.lines : [...prev, ...content.lines]));
+    setLang(content.lang);
+    setTotalLines(content.pagination.total);
+    setHasMore(content.pagination.hasMore);
+  };
+
+  const loadMoreLines = async (id: string, offset: number = 0, limit: number = PAGE_SIZE) => {
+    if (!hasMore || !id) return;
+
+    setLoadingMore(true);
+    try {
+      await loadBookContent(id, offset, limit);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const { flushUpdate } = useUpdateBook(id, updatedBook, canUpdate, setBook, focusLine);
+
   useEffect(() => {
     if (!id) return;
 
     const loadBook = async (id: string) => {
-      const book = await api.books.getById(id);
-      if (!book) return;
-
-      setBook(book);
-      setCurrentLine(book.currentLine || 0);
-      setFontSize(book.settings?.fontSize || 18);
-      setSpeechRate(book.settings?.rate || 1.0);
-      setVoice(book.settings?.voice || VOICE_FALLBACK.id);
-    };
-
-    const loadBookContent = async (id: string) => {
-      const content = await api.books.getContent(id);
-      if (!content) return;
-
-      setLines(content.lines);
-      setLang(content.lang);
-    };
-
-    const loadData = async (id: string) => {
       try {
-        await Promise.all([loadBook(id), loadBookContent(id)]);
+        const book = await api.books.getById(id);
+        if (!book) return;
+
+        setBook(book);
+        setCurrentLine(book.currentLine || 0);
+        setFontSize(book.settings?.fontSize || 18);
+        setSpeechRate(book.settings?.rate || 1.0);
+        setVoice(book.settings?.voice || VOICE_FALLBACK.id);
+
+        await loadBookContent(id, 0, (book.currentLine || 0) + PAGE_SIZE);
       } catch (error) {
         setError('Failed to load book');
         console.error('Failed to load book: ', error);
       } finally {
         setLoading(false);
+        setTimeout(() => {
+          focusLine();
+        }, 300);
       }
     };
 
-    loadData(id);
+    loadBook(id);
 
     speechService.onLineEnd = (lineIndex) => setCurrentLine(lineIndex);
     speechService.onIsPlayingChange = (playing) => setIsPlaying(playing);
     speechService.onFocus = (lineIndex) => focusLine(lineIndex);
-    speechService.onBookCompleted = (date) => setLastCompleted(date);
+    speechService.onBookCompleted = (date) => {
+      triggerSuccess();
+      setLastCompleted(date);
+    };
 
     return () => {
       speechService.stop();
@@ -173,37 +209,33 @@ export const BookReader = () => {
       speechService.onBookCompleted = null;
 
       if (timerRef.current) clearTimeout(timerRef.current);
+      if (forceTimerRef.current) clearTimeout(forceTimerRef.current);
     };
   }, [id]);
 
   useEffect(() => {
     if (isUserScrollRef.current || !isPlaying) return;
 
+    const focusLine = (index: number = currentLine) => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        const el = lineRefs.current[index];
+        if (el) {
+          el.focus({ preventScroll: true });
+        } else {
+          const list = document.querySelector('[data-virtuoso-list]');
+          (list as HTMLElement)?.focus({ preventScroll: true });
+        }
+      }, 100);
+    };
+
     const handleAutoScroll = () => {
-      lineRefs.current[currentLine]?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
-      if (isUserFocusRef.current === false) lineRefs.current[currentLine]?.focus({ preventScroll: true });
+      virtuosoRef.current?.scrollToIndex({ index: currentLine, align: 'center', behavior: 'smooth' });
+      if (isUserFocusRef.current === false) focusLine();
     };
 
     handleAutoScroll();
   }, [isPlaying, currentLine]);
-
-  useEffect(() => {
-    const target = lineRefs.current[currentLine];
-    if (!target || loading) return;
-
-    lineRefs.current[currentLine]?.focus({ preventScroll: true });
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setShowJumpButton(!entry.isIntersecting);
-      },
-      { root: null, threshold: 0.5 },
-    );
-
-    observer.observe(target);
-
-    return () => observer.disconnect();
-  }, [currentLine, loading]);
 
   useEffect(() => {
     if (!voice || availableVoices.length <= 2) return;
@@ -233,59 +265,97 @@ export const BookReader = () => {
   }
 
   return (
-    <div className="min-h-full relative">
-      <section onWheel={() => forceControl()} onTouchMove={() => forceControl()} className="relative min-h-[90vh] h-[50vh] max-h-3/4 overflow-auto px-12 pt-6 pb-6 leading-loose">
-        <header className="relative text-center mb-4">
-          <button className="absolute top-2 left-0 p-0!" onClick={() => navigateBack()} title="Back to Books">
-            <ArrowLeft size={16} />
-            <LibraryBig size={16} />
-          </button>
-          <h3 className="font-semibold">{book.title}</h3>
-        </header>
+    <div className="min-h-full relative overflow-hidden">
+      {/* Book Lines */}
+      <Virtuoso
+        ref={virtuosoRef}
+        style={{ paddingTop: '1.5rem' }}
+        className="min-h-[90vh] h-[50vh] max-h-3/4 w-full  leading-loose"
+        data={lines}
+        initialTopMostItemIndex={{ index: 0, align: 'center' }}
+        increaseViewportBy={200}
+        endReached={() => {
+          if (!id || !hasMore || loadingMore) return;
+          loadMoreLines(id, lines.length);
+        }}
+        atBottomStateChange={(atBottom) => {
+          if (!id) return;
 
-        {showJumpButton ? (
-          <button onClick={handleJumpToRead} className="fixed top-4 right-6 bg-amber-200 p-0! px-2!">
-            Jump to read
-          </button>
-        ) : (
-          <></>
-        )}
-
-        {/* Book Lines */}
-        <ol
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              moveToLine(Math.min(currentLine + 1, lines.length - 1));
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              moveToLine(Math.max(currentLine - 1, 0));
-            } else if (e.key === ' ' || e.key === 'Enter') {
-              e.preventDefault();
-              handlePlayPause();
-            }
-          }}
-          className="text-left"
-          style={{ fontSize }}
-        >
-          {lines.map((line, index) => (
-            <li
-              key={`line-${index}`}
-              role="button"
-              tabIndex={index === currentLine ? 0 : -1}
-              aria-current={index === currentLine ? 'location' : undefined}
-              aria-label={`Line ${index}`}
-              ref={(el) => {
-                lineRefs.current[index] = el;
+          if (atBottom && hasMore && !loadingMore) {
+            // Force a fetch if the user is stuck at the bottom
+            loadMoreLines(id, lines.length);
+          }
+        }}
+        rangeChanged={(range) => {
+          const isVisible = currentLine >= range.startIndex && currentLine <= range.endIndex;
+          setShowJumpButton(!isVisible);
+        }}
+        // Custom List Container (Replacing <ol>)
+        components={{
+          Header: () => (
+            <header className="relative text-center my-6 mx-12">
+              <button className="absolute top-2 left-0 p-0!" onClick={() => navigateBack()} title="Back to Books">
+                <ArrowLeft size={16} />
+                <LibraryBig size={16} />
+              </button>
+              <h3 className="font-semibold">{book.title}</h3>
+            </header>
+          ),
+          List: forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, children, ...props }, ref) => (
+            <div
+              {...props}
+              ref={ref}
+              tabIndex={0}
+              onWheel={() => forceControl()}
+              onTouchMove={() => forceControl()}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  moveToLine(Math.min(currentLine + 1, totalLines - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  moveToLine(Math.max(currentLine - 1, 0));
+                } else if (e.key === ' ' || e.key === 'Enter') {
+                  e.preventDefault();
+                  handlePlayPause();
+                }
               }}
-              onDoubleClick={() => handleLineClick(index)}
-              className={`cursor-pointer transition-all duration-200 ease-in-out rounded-lg ${index === currentLine ? 'bg-amber-100 font-medium outline-2 outline-amber-100' : ''}`}
+              className="list-none text-left px-12"
+              style={{ ...style, fontSize }}
             >
-              {line}
-            </li>
-          ))}
-        </ol>
-      </section>
+              {children}
+            </div>
+          )),
+          Footer: () => (
+            <div ref={loadMoreTriggerRef} className="h-20 w-full flex justify-center items-center text-sm text-gray-300">
+              {loadingMore ? (
+                <span className="flex justify-center items-center">
+                  <Loader2 className="animate-spin mr-2" size={16} />
+                  &nbsp;Loading more lines...
+                </span>
+              ) : !hasMore ? (
+                <span>You've reach the end</span>
+              ) : null}
+            </div>
+          ),
+        }}
+        // Individual Line Item
+        itemContent={(index, line) => (
+          <li
+            key={`line-${index}`}
+            role="button"
+            tabIndex={index === currentLine ? 0 : -1}
+            aria-current={index === currentLine ? 'location' : undefined}
+            ref={(el) => {
+              lineRefs.current[index] = el;
+            }}
+            onDoubleClick={() => handleLineClick(index)}
+            className={`cursor-pointer px-2 transition-colors duration-200 ease-in-out rounded-lg ${index === currentLine ? 'bg-amber-100 font-medium' : ''} focus:none focus-visible:none`}
+          >
+            {line}
+          </li>
+        )}
+      />
 
       {/* Scroobar Marker */}
       <div
@@ -306,6 +376,15 @@ export const BookReader = () => {
           }}
         />
       </div>
+
+      {/* Jump to read button */}
+      {showJumpButton ? (
+        <button onClick={handleJumpToRead} className="fixed top-4 right-6 bg-amber-200 px-2!">
+          Jump to read
+        </button>
+      ) : (
+        <></>
+      )}
 
       {/* Rate Indicator */}
       <div
@@ -395,7 +474,7 @@ export const BookReader = () => {
               }, 1200);
 
               if (isPlaying) {
-                speechService.start(currentLine, speechConfigs(newRate));
+                speechService.resume(currentLine, speechConfigs(newRate));
               }
             }}
             className="h-full min-w-30 pl-4 cursor-pointer text-center bg-transparent focus:outline-none"
@@ -409,8 +488,8 @@ export const BookReader = () => {
         </span>
 
         {book ? (
-          <span title={`Line ${currentLine} of ${lines.length}`} className="bg-transparent!">
-            Progress: {calculateProgress(currentLine, lines.length)}%
+          <span title={`Line ${currentLine} of ${totalLines}`} className="bg-transparent!">
+            Progress: {calculateProgress(currentLine, totalLines)}%
           </span>
         ) : (
           <></>

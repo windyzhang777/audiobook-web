@@ -1,5 +1,5 @@
 import { ChunkedUploader, UPLOAD_CHUNK_SIZE, type ChunkedUploadConfig } from '@/services/ChunkedUploader';
-import type { Book, BookContent } from '@audiobook/shared';
+import { type Book, type BookContent } from '@audiobook/shared';
 
 export const api = {
   books: {
@@ -43,8 +43,8 @@ export const api = {
       return response.json();
     },
 
-    getContent: async (id: string): Promise<BookContent> => {
-      const response = await fetch(`/api/books/${id}/content`);
+    getContent: async (id: string, offset: number, limit: number): Promise<BookContent> => {
+      const response = await fetch(`/api/books/${id}/content?offset=${offset}&limit=${limit}`);
 
       if (!response.ok) {
         const json = await response.json();

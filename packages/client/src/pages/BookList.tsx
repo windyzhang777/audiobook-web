@@ -130,7 +130,7 @@ export const BookList = () => {
         {booksToRead.length === 0 && booksCompleted.length > 0 ? (
           <div className="text-center text-gray-500 col-span-full">
             <BookOpen className="mx-auto mb-4 opacity-50" />
-            <p>Upload some more!</p>
+            <p>Upload a new book!</p>
           </div>
         ) : (
           <></>

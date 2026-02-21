@@ -2,7 +2,7 @@ import type { VoiceOption } from '@/pages/BookReader';
 import { getNowISOString, type BookContent, type SpeechOptions } from '@audiobook/shared';
 import { TTSNative, type TTSStatus } from './TTSNative';
 
-export interface SpeechConfigs extends BookContent, SpeechOptions {
+export interface SpeechConfigs extends Omit<BookContent, 'pagination'>, SpeechOptions {
   selectedVoice: VoiceOption;
 }
 
@@ -33,9 +33,6 @@ export class SpeechService {
     // Notify UI to show Pause icon
     this.onIsPlayingChange?.(true);
 
-    // MediaSession setup
-    this.setupMediaSession(index, configs);
-
     this.play(index, configs);
   }
 
@@ -52,6 +49,9 @@ export class SpeechService {
 
     // Hardware keep-alive
     this.silentAudio.play().catch((e) => console.error('Audio play failed:', e));
+
+    // MediaSession setup
+    this.setupMediaSession(index, configs);
 
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 
@@ -105,6 +105,8 @@ export class SpeechService {
   };
 
   stop() {
+    this.isRestarting = false;
+    if (this.timer) clearTimeout(this.timer);
     this.silentAudio.pause();
     this.stopCloud();
     this.ttsNative.stop();
