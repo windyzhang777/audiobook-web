@@ -53,6 +53,16 @@ export const api = {
       return response.json();
     },
 
+    search: async (id: string, query: string): Promise<{ count: number; indices: number[] }> => {
+      const response = await fetch(`/api/books/${id}/search?q=${query}`);
+
+      if (!response.ok) {
+        const json = await response.json();
+        throw new Error(json.message);
+      }
+      return response.json();
+    },
+
     update: async (id: string, updates: Partial<Book>): Promise<Book> => {
       try {
         const response = await fetch(`/api/books/${id}`, {

@@ -119,6 +119,24 @@ export class BookService {
     };
   };
 
+  search = (id: string, query: string) => {
+    const content = this.bookRepository.getContent(id);
+    if (!content) {
+      throw new Error(`Content for book with ID ${id} not found`);
+    }
+
+    const normalizedQuery = query.toLowerCase();
+    const matches: number[] = [];
+
+    content.lines.forEach((line, index) => {
+      if (line.toLocaleLowerCase().includes(normalizedQuery)) {
+        matches.push(index);
+      }
+    });
+
+    return matches;
+  };
+
   private deleteFile = (filePath: string) => {
     try {
       fs.unlinkSync(filePath);

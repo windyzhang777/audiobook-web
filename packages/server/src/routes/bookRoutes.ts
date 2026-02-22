@@ -48,6 +48,7 @@ export const bookRoutes = (bookController: BookController) => {
   router.patch('/:id', bookController.update);
   router.get('/:id/content', bookController.getContent);
   router.post('/upload', upload.single('file'), bookController.upload);
+  router.get('/:id/search', bookController.search);
   router.delete('/:id', bookController.delete);
 
   return router;

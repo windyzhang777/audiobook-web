@@ -84,6 +84,24 @@ export class BookController {
     }
   };
 
+  search = (req: Request, res: Response) => {
+    const { id } = req.params;
+    const query = req.query.q as string;
+
+    if (!query) {
+      return res.status(400).json({ message: 'No query provided' });
+    }
+
+    try {
+      const matches = this.bookService.search(id as string, query);
+
+      res.json({ count: matches.length, indices: matches });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Error text search for "${query}"`;
+      return res.status(500).json({ message });
+    }
+  };
+
   update = (req: Request, res: Response) => {
     try {
       const updatedBook = this.bookService.update(req.params.id as string, {
