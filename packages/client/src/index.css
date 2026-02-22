@@ -38,7 +38,7 @@ h1 {
 button {
   border-radius: 8px;
   border: none;
-  padding: 0.6em 1.2em;
+  padding: 0.6em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
@@ -49,9 +49,13 @@ button {
   gap: 0.5rem;
   outline: none;
 }
-button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none;
+  box-shadow: 0 0 0 2px oklch(92.8% 0.006 264.531);
+  border-radius: 4px;
+}
+button:focus:not(:focus-visible) {
+  box-shadow: none;
 }
 
 nav {

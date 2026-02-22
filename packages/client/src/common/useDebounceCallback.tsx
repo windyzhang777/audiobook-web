@@ -14,10 +14,12 @@ export function useDebounceCallback<T extends (...args: any[]) => void>(callback
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
-      if (argsRef.current) {
-        callbackRef.current(...argsRef.current);
-        argsRef.current = null;
-      }
+    }
+
+    const currentArgs = argsRef.current;
+    if (currentArgs !== null) {
+      argsRef.current = null;
+      callbackRef.current(...currentArgs);
     }
   }, []);
 
@@ -26,12 +28,10 @@ export function useDebounceCallback<T extends (...args: any[]) => void>(callback
       argsRef.current = args;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
-        timeoutRef.current = null;
-        argsRef.current = null;
-        callbackRef.current(...args);
+        flush();
       }, delay);
     },
-    [delay],
+    [delay, flush],
   );
 
   return { run: debouncedFn, flush };

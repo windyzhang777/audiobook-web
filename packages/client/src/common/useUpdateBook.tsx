@@ -3,15 +3,7 @@ import { FIVE_MINUTES, type Book } from '@audiobook/shared';
 import { useEffect, useRef } from 'react';
 import { useDebounceCallback } from './useDebounceCallback';
 
-export function useUpdateBook(
-  id: string | undefined,
-  updatedBook: Partial<Book>,
-  canUpdate: boolean,
-  setBook: React.Dispatch<React.SetStateAction<Book | undefined>>,
-  focusLine: (index?: number) => void,
-) {
-  console.log(`canUpdate :`, canUpdate);
-  const shouldSync = useRef(false);
+export function useUpdateBook(id: string | undefined, updatedBook: Partial<Book>, canUpdate: boolean, setBook: React.Dispatch<React.SetStateAction<Book | undefined>>) {
   const updatedBookRef = useRef(updatedBook);
 
   const handleBookUpdate = async () => {
@@ -38,20 +30,9 @@ export function useUpdateBook(
   }, [debounceUpdate, canUpdate]);
 
   useEffect(() => {
-    console.log(`shouldSync.current :`, shouldSync.current);
-
     const handlePageVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        if (shouldSync.current) return;
-
-        shouldSync.current = true;
         flushUpdate();
-      } else if (document.visibilityState === 'visible') {
-        console.log(`document.visibilityState :`, document.visibilityState);
-        shouldSync.current = false;
-        setTimeout(() => {
-          focusLine?.();
-        }, 100);
       }
     };
 
@@ -61,7 +42,6 @@ export function useUpdateBook(
     return () => {
       document.removeEventListener('visibilitychange', handlePageVisibility);
       window.removeEventListener('pagehide', handlePageVisibility);
-
       flushUpdate();
     };
   }, [flushUpdate]);

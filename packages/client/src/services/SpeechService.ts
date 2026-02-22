@@ -16,7 +16,6 @@ export class SpeechService {
 
   onLineEnd: ((lineIndex: number) => void) | null = null;
   onIsPlayingChange: ((isPlaying: boolean) => void) | null = null;
-  onFocus: ((lineIndex: number) => void) | null = null;
   onBookCompleted: ((dateString: string) => void) | null = null;
 
   private constructor() {
@@ -42,7 +41,6 @@ export class SpeechService {
     // Boundary Check
     if (index < 0 || index >= configs.lines.length) {
       this.onIsPlayingChange?.(false);
-      this.onFocus?.(index);
       this.onBookCompleted?.(getNowISOString());
       return;
     }
@@ -118,6 +116,16 @@ export class SpeechService {
     this.onIsPlayingChange?.(false);
   }
 
+  pause() {
+    if (this.timer) clearTimeout(this.timer);
+    this.silentAudio.pause();
+    this.stopCloud();
+    this.ttsNative.stop();
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
+  }
+
   private stopCloud() {
     if (!this.cloudAudio) return;
 
@@ -128,19 +136,11 @@ export class SpeechService {
   }
 
   resume(index: number, configs: SpeechConfigs) {
-    this.isRestarting = true;
-    if (this.timer) clearTimeout(this.timer);
-
-    // stop
-    this.silentAudio.pause();
-    this.stopCloud();
-    this.ttsNative.stop();
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = 'none';
-      this.clearMediaSession();
-    }
+    // pause
+    this.pause();
 
     // play
+    this.isRestarting = true;
     this.timer = setTimeout(() => {
       this.play(index, configs);
       this.isRestarting = false;
@@ -164,7 +164,7 @@ export class SpeechService {
 
     // Set the Play/Pause handlers (AirPod Taps)
     navigator.mediaSession.setActionHandler('play', () => this.start(index, configs));
-    navigator.mediaSession.setActionHandler('pause', () => this.stop());
+    navigator.mediaSession.setActionHandler('pause', () => this.pause());
 
     // Set the prev/next track handlers (AirPod Taps)
     navigator.mediaSession.setActionHandler('nexttrack', () => {
